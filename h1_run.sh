@@ -94,17 +94,19 @@ sleep 2
 echo ""
 echo "══ PHASE 2: Cross-User IDOR Scanner ══"
 echo ""
-CMD="python3 $TOOLS_DIR/h1_idor_scanner.py \
-  --token-a $TOKEN_A \
-  --token-b $TOKEN_B"
+IDOR_ARGS=(
+  python3 "$TOOLS_DIR/h1_idor_scanner.py"
+  --token-a "$TOKEN_A"
+  --token-b "$TOKEN_B"
+)
 
-[[ -n "$REPORT_ID" ]] && CMD="$CMD --report-id $REPORT_ID"
-[[ -n "$USER_ID" ]] && CMD="$CMD --user-id $USER_ID"
-[[ -n "$PROGRAM" ]] && CMD="$CMD --program $PROGRAM"
-[[ -n "$ATTACHMENT_URL" ]] && CMD="$CMD --attachment-url '$ATTACHMENT_URL'"
+[[ -n "$REPORT_ID" ]]      && IDOR_ARGS+=(--report-id "$REPORT_ID")
+[[ -n "$USER_ID" ]]        && IDOR_ARGS+=(--user-id "$USER_ID")
+[[ -n "$PROGRAM" ]]        && IDOR_ARGS+=(--program "$PROGRAM")
+[[ -n "$ATTACHMENT_URL" ]] && IDOR_ARGS+=(--attachment-url "$ATTACHMENT_URL")
 
-echo "  Running: $CMD"
-eval $CMD 2>&1 | tee -a "$LOG"
+echo "  Running: ${IDOR_ARGS[*]}"
+"${IDOR_ARGS[@]}" 2>&1 | tee -a "$LOG"
 
 sleep 2
 

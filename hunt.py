@@ -46,10 +46,10 @@ def log(level, msg):
 
 
 def run_cmd(cmd, cwd=None, timeout=600):
-    """Run a shell command and return (success, output)."""
+    """Run a command (list form) and return (success, output)."""
     try:
         result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True,
+            cmd, shell=False, capture_output=True, text=True,
             cwd=cwd, timeout=timeout
         )
         return result.returncode == 0, result.stdout + result.stderr
@@ -66,7 +66,7 @@ def check_tools():
     missing = []
 
     for tool in tools:
-        success, _ = run_cmd(f"command -v {tool}")
+        success, _ = run_cmd(["bash", "-c", f"command -v {tool}"])
         if success:
             installed.append(tool)
         else:
@@ -93,7 +93,7 @@ def setup_wordlists():
             continue
 
         log("info", f"Downloading {name}...")
-        success, output = run_cmd(f'curl -sL "{url}" -o "{filepath}"')
+        success, output = run_cmd(["curl", "-sL", url, "-o", filepath])
         if success and os.path.getsize(filepath) > 100:
             lines = sum(1 for _ in open(filepath))
             log("ok", f"Downloaded {name} ({lines} entries)")
@@ -131,15 +131,13 @@ def run_recon(domain, quick=False):
     """Run recon engine on a domain."""
     log("info", f"Running recon on {domain}...")
     script = os.path.join(TOOLS_DIR, "recon_engine.sh")
-    quick_flag = "--quick" if quick else ""
+    cmd = ["bash", script, domain]
+    if quick:
+        cmd.append("--quick")
 
-    # Run with live output
     try:
-        proc = subprocess.Popen(
-            f'bash "{script}" "{domain}" {quick_flag}',
-            shell=True, cwd=BASE_DIR
-        )
-        proc.wait(timeout=1800)  # 30 min timeout
+        proc = subprocess.Popen(cmd, cwd=BASE_DIR)
+        proc.wait(timeout=1800)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
         proc.kill()
@@ -156,13 +154,12 @@ def run_vuln_scan(domain, quick=False):
 
     log("info", f"Running vulnerability scanner on {domain}...")
     script = os.path.join(TOOLS_DIR, "vuln_scanner.sh")
-    quick_flag = "--quick" if quick else ""
+    cmd = ["bash", script, recon_dir]
+    if quick:
+        cmd.append("--quick")
 
     try:
-        proc = subprocess.Popen(
-            f'bash "{script}" "{recon_dir}" {quick_flag}',
-            shell=True, cwd=BASE_DIR
-        )
+        proc = subprocess.Popen(cmd, cwd=BASE_DIR)
         proc.wait(timeout=1800)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
@@ -180,7 +177,7 @@ def generate_reports(domain):
 
     log("info", f"Generating reports for {domain}...")
     script = os.path.join(TOOLS_DIR, "report_generator.py")
-    success, output = run_cmd(f'python3 "{script}" "{findings_dir}"')
+    success, output = run_cmd(["python3", script, findings_dir])
     print(output)
 
     # Count generated reports
@@ -284,13 +281,12 @@ def run_cve_hunt(domain):
     log("info", f"Running CVE hunter on {domain}...")
     script = os.path.join(TOOLS_DIR, "cve_hunter.py")
     recon_dir = os.path.join(RECON_DIR, domain)
-    recon_flag = f'--recon-dir "{recon_dir}"' if os.path.isdir(recon_dir) else ""
+    cmd = ["python3", script, domain]
+    if os.path.isdir(recon_dir):
+        cmd.extend(["--recon-dir", recon_dir])
 
     try:
-        proc = subprocess.Popen(
-            f'python3 "{script}" "{domain}" {recon_flag}',
-            shell=True, cwd=BASE_DIR
-        )
+        proc = subprocess.Popen(cmd, cwd=BASE_DIR)
         proc.wait(timeout=600)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
@@ -303,17 +299,15 @@ def run_zero_day_fuzzer(domain, deep=False):
     """Run zero-day fuzzer on a target."""
     log("info", f"Running zero-day fuzzer on {domain}...")
     script = os.path.join(TOOLS_DIR, "zero_day_fuzzer.py")
-    deep_flag = "--deep" if deep else ""
-
-    # Check if we have recon data with live URLs
     recon_dir = os.path.join(RECON_DIR, domain)
+    cmd = ["python3", script, f"https://{domain}"]
     if os.path.isdir(recon_dir):
-        cmd = f'python3 "{script}" "https://{domain}" --recon-dir "{recon_dir}" {deep_flag}'
-    else:
-        cmd = f'python3 "{script}" "https://{domain}" {deep_flag}'
+        cmd.extend(["--recon-dir", recon_dir])
+    if deep:
+        cmd.append("--deep")
 
     try:
-        proc = subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
+        proc = subprocess.Popen(cmd, cwd=BASE_DIR)
         proc.wait(timeout=900)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
